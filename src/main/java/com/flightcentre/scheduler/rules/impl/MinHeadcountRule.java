@@ -39,7 +39,7 @@ public class MinHeadcountRule implements BusinessRule {
                     getRuleName(),
                     Violation.Severity.WARNING,
                     String.format("Shift %s requires %d employees but only %d are assigned",
-                            shiftId, required, assigned),
+                            shiftId, required, assignedCount),
                     null,  // No specific employee — this is a shift-level concern
                     List.of(shiftId)
             ));
