@@ -1,6 +1,5 @@
 package com.flightcentre.scheduler.rules.impl;
 
-import com.flightcentre.scheduler.model.Assignment;
 import com.flightcentre.scheduler.model.Shift;
 import com.flightcentre.scheduler.model.valueobjects.Violation;
 import com.flightcentre.scheduler.rules.BusinessRule;
@@ -8,17 +7,26 @@ import com.flightcentre.scheduler.rules.RuleContext;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * RULE-03: Weekly Hours Limit
  * An employee cannot be scheduled beyond their maximum weekly hours
  * within any 7-day rolling window (any continuous 168-hour period).
  *
- * "Rolling window" means: for the candidate shift, look at all shifts
- * that overlap with the 7-day window centred around the candidate.
- * This is stricter than a calendar week check.
+ * The window is defined as the 168 hours leading up to and including the
+ * candidate shift. Any existing shift overlapping this window is counted
+ * in full — shifts straddling the boundary are not prorated. This is a
+ * conservative overcount by design; it may flag a violation where precise
+ * prorating would not, but avoids complexity for an edge case not present
+ * in the current data set.
+ *
+ * The sliding window sum algorithm (O(n), prefix subtraction) was considered
+ * for evaluating all possible 7-day windows across a wider date range, but
+ * was not implemented because shifts span arbitrary time ranges rather than
+ * discrete daily buckets, making bucketing a prerequisite. This remains a
+ * valid pathway to solution if requirements evolve.
  */
 @Component
 public class WeeklyHoursLimitRule implements BusinessRule {
@@ -32,44 +40,37 @@ public class WeeklyHoursLimitRule implements BusinessRule {
 
     @Override
     public List<Violation> evaluate(RuleContext context) {
-        List<Violation> violations = new ArrayList<>();
-
-        Shift candidate = context.candidateShift();
+        Shift candidateShift = context.candidateShift();
         double maxWeeklyHours = context.employee().getMaxWeeklyHours();
         String employeeId = context.employee().getId();
         String employeeName = context.employee().getName();
 
-        // The rolling window: 7 days before the candidate shift starts
-        // to 7 days after it ends — we find all shifts within this window
-        // and sum their hours including the candidate.
-        LocalDateTime windowStart = candidate.getStartDatetime().minusHours(ROLLING_WINDOW_HOURS);
-        LocalDateTime windowEnd = candidate.getEndDatetime().plusHours(ROLLING_WINDOW_HOURS);
+        // rolling window: the 7 days leading up to and including the candidate shift
+        LocalDateTime windowStart = candidateShift.getStartDatetime().minusHours(ROLLING_WINDOW_HOURS);
+        LocalDateTime windowEnd = candidateShift.getEndDatetime();
 
-        double totalHours = candidate.durationHours();
+        double hoursFromExisting = context.existingAssignments().stream()              // iterate employee's existing assignments
+                .map(existing -> context.allShifts().get(existing.getShiftId()))       // resolve shiftId -> Shift object
+                .filter(Objects::nonNull)                                               // skip if shift not found in map
+                .filter(existingShift -> !existingShift.getId().equals(candidateShift.getId()))  // skip same shift (re-evaluation guard)
+                .filter(existingShift -> existingShift.getStartDatetime().isBefore(windowEnd)
+                        && existingShift.getEndDatetime().isAfter(windowStart))        // keep only shifts within the rolling window
+                .mapToDouble(Shift::durationHours)                                     // extract duration in hours from each qualifying shift
+                .sum();                                                                 // accumulate total hours
 
-        for (Assignment existing : context.existingAssignments()) {
-            Shift existingShift = context.allShifts().get(existing.getShiftId());
-            if (existingShift == null) continue;
-            if (existingShift.getId().equals(candidate.getId())) continue;
-
-            // Include shift if it falls within the 168-hour rolling window
-            if (existingShift.getStartDatetime().isBefore(windowEnd)
-                    && existingShift.getEndDatetime().isAfter(windowStart)) {
-                totalHours += existingShift.durationHours();
-            }
-        }
+        double totalHours = candidateShift.durationHours() + hoursFromExisting;       // add candidate's hours to the rolling total
 
         if (totalHours > maxWeeklyHours) {
-            violations.add(new Violation(
+            return List.of(new Violation(
                     getRuleName(),
                     Violation.Severity.ERROR,
                     String.format("%s would exceed maximum weekly hours of %.0f (total: %.1f hours)",
                             employeeName, maxWeeklyHours, totalHours),
                     employeeId,
-                    List.of(candidate.getId())
+                    List.of(candidateShift.getId())
             ));
         }
 
-        return violations;
+        return List.of();                                                               // no violation
     }
 }
