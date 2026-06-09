@@ -9,13 +9,13 @@ controller/        → Thin REST layer. Receives HTTP, validates input, delegate
 service/           → Business logic. Orchestrates repositories and the rule engine. No HTTP concerns.
 repository/        → Data access abstraction. Interface + in-memory implementation.
 rules/             → Isolated business rule engine. Each rule is a named, testable component.
-model/             → Core entities, enums, and value objects.
+model/             → Domain, Core entities, enums, and value objects.
 exception/         → Custom exceptions mapped to HTTP status codes.
 dto/               → Request DTOs for API input validation.
 seed/              → Startup data loader.
 ```
 
-Services depend on repository interfaces, not implementations. Swapping to JPA requires writing new implementations — no service or controller changes.
+Services depend on repository interfaces, not their implementations. Swapping to JPA requires changing the repository layer and adding annotations to models, but no structural changes nor changes to service or controller.
 
 ## Business Rules Design
 
@@ -36,7 +36,10 @@ public interface BusinessRule {
 
 `RuleContext` is a Java `record` that bundles everything a rule needs — the candidate assignment, employee, shift, existing assignments, and pre-computed lookup maps. This avoids passing many parameters and ensures rules are pure functions: given this context, return violations.
 
-Rules run synchronously. The isolated `BusinessRule` interface means switching to async execution — via `CompletableFuture` with a dedicated thread pool — requires changing only `RuleEvaluator`, not any individual rule. I chose synchronous execution because the rules are in-memory and fast, and premature async adds complexity without measurable benefit at this scale.
+Rules run synchronously. The isolated `BusinessRule` interface means switching to async execution — via `CompletableFuture` with a dedicated thread pool — requires changing only `RuleEvaluator`, not any individual rule. I chose synchronous execution because of 2 main reasons: 
+
+1. The rules are in-memory and fast, and premature async adds complexity without measurable benefit at this scale. 
+2. Quickest approach was the .parallelStream() which uses the JVM's ForkJoinPool. In a real life production scenario, this will create thread starvation causing requests to queue up. 
 
 ## RULE-03 (Weekly Hours) — Detailed Design Notes
 
@@ -46,9 +49,9 @@ The rolling 7-day window is the trickiest rule. Here is the reasoning behind the
 
 **Known limitation — no partial shifts:** If a shift straddles the window boundary (e.g. the window starts at 06:00 and a shift runs 04:00-12:00), the full shift duration is counted rather than just the portion within the window. This is a conservative overcount by design — it may flag a violation where precise prorating would not.
 
-**Known limitation — single-window check:** The current implementation checks one window (168h lookback from the candidate shift). A truly exhaustive rolling window check would place the candidate shift in every possible position within a 7-day window and find the worst case. This would require iterating all possible window placements, which the sliding window sum algorithm can solve efficiently.
+**Known limitation — single-window check:** The current implementation checks one window (168h lookback from the candidate shift). A truly exhaustive rolling window check would place the candidate shift in every possible position within a 7-day window and find the worst case. This would require iterating all possible window placements, which the **sliding window sum algorithm** can solve efficiently.
 
-**Sliding window sum (considered, not implemented):** I considered a sliding window sum approach — iterating a 14-day range and computing all seven possible 7-day window sums in O(n) using the prefix subtraction technique. I decided against implementing it for two reasons: first, our shift data isn't bucketed into daily slots so converting it would add unnecessary complexity; second, the spec only requires checking whether adding a single candidate shift violates the limit, not finding the worst-case window across a full month. The simpler single-window check is correct for the given requirements, and the architecture makes it trivial to swap in a more sophisticated algorithm later if the requirements change.
+**Sliding window sum algorithm (considered, not implemented):** I considered a sliding window sum approach — iterating a 14-day range and computing all seven possible 7-day window sums in O(n) using the prefix subtraction technique. I decided against implementing it for two reasons: first, our shift data isn't bucketed into daily slots so converting it would add unnecessary complexity; second, the spec only requires checking whether adding a single candidate shift violates the limit, not finding the worst-case window across a full month. The simpler single-window check is correct for the given requirements, and the architecture makes it trivial to swap in a more sophisticated algorithm later if the requirements change.
 
 ## Auto-Assign Implementation
 
