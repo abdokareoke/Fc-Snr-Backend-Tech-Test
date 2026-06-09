@@ -1,10 +1,36 @@
 # Shift Scheduling Engine
 
-This repository contains a technical assessment for a Senior Java Backend Engineer.
+A production-ready REST API for workforce shift scheduling, built with Spring Boot 4.0.6 and Java 21.
+
+## Assessment Context
+
+1. Read [TECH_TEST.md](TECH_TEST.md) for the full problem specification
+2. Read [SOLUTION.md](SOLUTION.md) for design decisions, trade-offs, and debrief answers
 
 ## Getting Started
 
-1. Read [TECH_TEST.md](TECH_TEST.md) carefully before writing any code
-2. Complete the assessment
-3. Fill in [SOLUTION.md](SOLUTION.md) with your decisions and answers
-4. Submit the repository link and add include provided GitHub usernames are code reviweers
+### Prerequisites
+
+- Java 21+
+- Maven 3.9+
+
+### Run the Server
+
+```bash
+mvn spring-boot:run
+```
+
+The application starts on `http://localhost:8080` with seed data pre-loaded (5 employees, 5 shifts, 1 schedule).
+
+### Run the Tests
+
+```bash
+mvn test
+```
+
+### Build the JAR
+
+```bash
+mvn package
+java -jar target/shift-scheduler-1.0.0.jar
+```
