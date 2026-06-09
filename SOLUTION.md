@@ -187,3 +187,23 @@ With more time or in a production context:
 - **Smarter auto-assign**: Consider employee preferences, fairness in hour distribution, and backtracking for better global coverage.
 - **API pagination**: List endpoints would return paginated results for large datasets.
 - **OpenAPI/Swagger documentation**: Auto-generated API docs from annotations.
+
+
+## Testing with Postman
+
+A Postman collection is included at `postman/Shift-Scheduler-API.postman_collection.json`.
+
+Import it into Postman (File → Import) and run requests top-to-bottom. The collection is structured as a narrative that walks through the full API:
+
+1. **Verify Seed Data** — confirm employees, shifts, and schedule are loaded
+2. **Valid Assignments** — assign qualified employees to shifts (201 Created)
+3. **Scenario A** — OVERLAP violation (Alice on two overlapping Monday shifts)
+4. **Scenario B** — REST_VIOLATION (Bob with only 8h rest between shifts)
+5. **Scenario C** — SKILL_MISMATCH (Carol without FORKLIFT_CERTIFIED)
+6. **Scenario D** — UNDERSTAFFED warnings via the conflicts endpoint
+7. **Scenario E** — AVAILABILITY_VIOLATION (Saturday shift for Mon-Fri employee)
+8. **Auto-Assign** — system fills remaining shifts + verify conflicts reduced
+9. **Cleanup** — demonstrate removing an assignment
+10. **Employee Schedule View** — per-employee shift query with week filter
+
+Prerequisites: start the server with `mvn spring-boot:run` before running the collection.
