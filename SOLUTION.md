@@ -190,6 +190,7 @@ With more time or in a production context:
 - **Smarter auto-assign**: Consider employee preferences, fairness in hour distribution, and backtracking for better global coverage.
 - **API pagination**: List endpoints would return paginated results for large datasets.
 - **OpenAPI/Swagger documentation**: Auto-generated API docs from annotations.
+- **More Tests**: Add integration tests verifying the full HTTP request/response cycle (status codes, error responses) and scenario-level tests for the auto-assign algorithm and multi-step conflict workflows.
 
 
 ## Testing with Postman
